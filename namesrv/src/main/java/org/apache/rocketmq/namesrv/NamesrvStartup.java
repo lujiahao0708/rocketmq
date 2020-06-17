@@ -54,7 +54,9 @@ public class NamesrvStartup {
     public static NamesrvController main0(String[] args) {
 
         try {
+            // 创建 NamesrvController
             NamesrvController controller = createNamesrvController(args);
+            // 启动 NamesrvController
             start(controller);
             String tip = "The Name Server boot success. serializeType=" + RemotingCommand.getSerializeTypeConfigInThisServer();
             log.info(tip);
@@ -72,6 +74,7 @@ public class NamesrvStartup {
         System.setProperty(RemotingCommand.REMOTING_VERSION_KEY, Integer.toString(MQVersion.CURRENT_VERSION));
         //PackageConflictDetect.detectFastjson();
 
+        // 生成 commandLine 命令行对象
         Options options = ServerUtil.buildCommandlineOptions(new Options());
         commandLine = ServerUtil.parseCmdLine("mqnamesrv", args, buildCommandlineOptions(options), new PosixParser());
         if (null == commandLine) {
@@ -79,15 +82,22 @@ public class NamesrvStartup {
             return null;
         }
 
+        // 创建 NamesrvConfig 和 NettyServerConfig 对象
         final NamesrvConfig namesrvConfig = new NamesrvConfig();
         final NettyServerConfig nettyServerConfig = new NettyServerConfig();
+        // 设置 NameServer 服务端口号
         nettyServerConfig.setListenPort(9876);
+        // 解析命令行 -c 参数指定配置文件
+        // -c 可以指定自定义配置文件  文件内容会被解析到namesrvConfig和nettyServerConfig中
+        // 如果没有指定，这两个类里面都有默认值的
+        // namesrvConfig里rocketmqHome没有默认值，所以在一开始的时候需要手动指定
         if (commandLine.hasOption('c')) {
             String file = commandLine.getOptionValue('c');
             if (file != null) {
                 InputStream in = new BufferedInputStream(new FileInputStream(file));
                 properties = new Properties();
                 properties.load(in);
+                // 属性填充到 namesrvConfig 和 nettyServerConfig
                 MixAll.properties2Object(properties, namesrvConfig);
                 MixAll.properties2Object(properties, nettyServerConfig);
 
@@ -123,8 +133,10 @@ public class NamesrvStartup {
         MixAll.printObjectProperties(log, namesrvConfig);
         MixAll.printObjectProperties(log, nettyServerConfig);
 
+        // 属性填充到 namesrvConfig 和 nettyServerConfig
         final NamesrvController controller = new NamesrvController(namesrvConfig, nettyServerConfig);
 
+        // 重新注册配置，防止丢失
         // remember all configs to prevent discard
         controller.getConfiguration().registerConfig(properties);
 
@@ -137,12 +149,14 @@ public class NamesrvStartup {
             throw new IllegalArgumentException("NamesrvController is null");
         }
 
+        // NamesrvController 初始化
         boolean initResult = controller.initialize();
         if (!initResult) {
             controller.shutdown();
             System.exit(-3);
         }
 
+        // 注册钩子函数，JVM进程退出时，优雅地关闭服务并释放资源
         Runtime.getRuntime().addShutdownHook(new ShutdownHookThread(log, new Callable<Void>() {
             @Override
             public Void call() throws Exception {
@@ -151,6 +165,7 @@ public class NamesrvStartup {
             }
         }));
 
+        // 启动 netty 服务
         controller.start();
 
         return controller;
