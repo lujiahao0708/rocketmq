@@ -267,6 +267,7 @@ public class BrokerOuterAPI {
         final int timeoutMills) {
         final List<Boolean> changedList = new CopyOnWriteArrayList<>();
         List<String> nameServerAddressList = this.remotingClient.getNameServerAddressList();
+        // 遍历所有 NameServer 节点,通过比较 DataVersion 是否相同来判断是否需要重新注册 broker
         if (nameServerAddressList != null && nameServerAddressList.size() > 0) {
             final CountDownLatch countDownLatch = new CountDownLatch(nameServerAddressList.size());
             for (final String namesrvAddr : nameServerAddressList) {
@@ -274,6 +275,8 @@ public class BrokerOuterAPI {
                     @Override
                     public void run() {
                         try {
+                            // 此处调用的是 org.apache.rocketmq.namesrv.processor.DefaultRequestProcessor#queryBrokerTopicConfig
+                            // 通过查看 brokerLiveTable 中 DataVersion 和 Broker 的 DataVersion 是否相等来判断是否需要重新注册 broker
                             QueryDataVersionRequestHeader requestHeader = new QueryDataVersionRequestHeader();
                             requestHeader.setBrokerAddr(brokerAddr);
                             requestHeader.setBrokerId(brokerId);
@@ -292,10 +295,12 @@ public class BrokerOuterAPI {
                                     byte[] body = response.getBody();
                                     if (body != null) {
                                         nameServerDataVersion = DataVersion.decode(body, DataVersion.class);
+                                        // 当前 DataVersion 和 brokerLiveTable 中 DataVersion 不相等则表示该broker 信息已变更,需要重新向各个 NameServer 节点注册
                                         if (!topicConfigWrapper.getDataVersion().equals(nameServerDataVersion)) {
                                             changed = true;
                                         }
                                     }
+                                    // 将结果添加到各个 NameServer 节点对比结果的 List 中
                                     if (changed == null || changed) {
                                         changedList.add(Boolean.TRUE);
                                     }

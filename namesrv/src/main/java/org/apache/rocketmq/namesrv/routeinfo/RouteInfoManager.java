@@ -111,23 +111,30 @@ public class RouteInfoManager {
         RegisterBrokerResult result = new RegisterBrokerResult();
         try {
             try {
+                // 加锁
                 this.lock.writeLock().lockInterruptibly();
 
+                // 1. clusterAddrTable 维护(新增 broker 节点名称)
                 Set<String> brokerNames = this.clusterAddrTable.get(clusterName);
                 if (null == brokerNames) {
+                    // broker 首次注册时,新建 brokerNames 并添加到 clusterAddrTable 中
                     brokerNames = new HashSet<String>();
                     this.clusterAddrTable.put(clusterName, brokerNames);
                 }
+                // broker 非首次注册,直接追加(brokerNames是Set结构,不会重复)
                 brokerNames.add(brokerName);
 
                 boolean registerFirst = false;
-
+                // 2. brokerAddrTable 维护(broker 基础信息)
                 BrokerData brokerData = this.brokerAddrTable.get(brokerName);
                 if (null == brokerData) {
+                    // broker 首次注册, 新建 BrokerData 并添加到 brokerAddrTable 中
                     registerFirst = true;
                     brokerData = new BrokerData(clusterName, brokerName, new HashMap<Long, String>());
                     this.brokerAddrTable.put(brokerName, brokerData);
                 }
+
+                // broker 主从切换(并不支持自动更改,需要将 broker 停机后修改配置文件)
                 Map<Long, String> brokerAddrsMap = brokerData.getBrokerAddrs();
                 //Switch slave to master: first remove <1, IP:PORT> in namesrv, then add <0, IP:PORT>
                 //The same IP:PORT must only have one record in brokerAddrTable
@@ -139,15 +146,16 @@ public class RouteInfoManager {
                     }
                 }
 
+                // 判断 broker 是否已经注册过
                 String oldAddr = brokerData.getBrokerAddrs().put(brokerId, brokerAddr);
                 registerFirst = registerFirst || (null == oldAddr);
 
-                if (null != topicConfigWrapper
-                    && MixAll.MASTER_ID == brokerId) {
-                    if (this.isBrokerTopicConfigChanged(brokerAddr, topicConfigWrapper.getDataVersion())
-                        || registerFirst) {
-                        ConcurrentMap<String, TopicConfig> tcTable =
-                            topicConfigWrapper.getTopicConfigTable();
+                // 3. topicQueueTable 维护
+                // 如果是主节点并且 topic 首次注册或者更新,则进行创建或更新 topic 队列信息
+                if (null != topicConfigWrapper && MixAll.MASTER_ID == brokerId) {
+                    // isBrokerTopicConfigChanged 就是上面讲到的 Broker 是否发送心跳包中获取 brokerLiveTable#dataVersion 的方法
+                    if (this.isBrokerTopicConfigChanged(brokerAddr, topicConfigWrapper.getDataVersion()) || registerFirst) {
+                        ConcurrentMap<String, TopicConfig> tcTable = topicConfigWrapper.getTopicConfigTable();
                         if (tcTable != null) {
                             for (Map.Entry<String, TopicConfig> entry : tcTable.entrySet()) {
                                 this.createAndUpdateQueueData(brokerName, entry.getValue());
@@ -156,6 +164,7 @@ public class RouteInfoManager {
                     }
                 }
 
+                // 4. brokerLiveTable 维护(更新 brokerLiveTable 信息,保存最新活动的 Broker)
                 BrokerLiveInfo prevBrokerLiveInfo = this.brokerLiveTable.put(brokerAddr,
                     new BrokerLiveInfo(
                         System.currentTimeMillis(),
@@ -166,6 +175,7 @@ public class RouteInfoManager {
                     log.info("new broker registered, {} HAServer: {}", brokerAddr, haServerAddr);
                 }
 
+                // 更新 filterServerTable 信息
                 if (filterServerList != null) {
                     if (filterServerList.isEmpty()) {
                         this.filterServerTable.remove(brokerAddr);
@@ -174,6 +184,7 @@ public class RouteInfoManager {
                     }
                 }
 
+                // 从节点心跳处理结果增加 HaServerAddr 和 MasterAddr
                 if (MixAll.MASTER_ID != brokerId) {
                     String masterAddr = brokerData.getBrokerAddrs().get(MixAll.MASTER_ID);
                     if (masterAddr != null) {

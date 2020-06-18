@@ -917,6 +917,8 @@ public class BrokerController {
             topicConfigWrapper.setTopicConfigTable(topicConfigTable);
         }
         // 判断是否需要发送心跳包
+        // 第一次注册是强制注册 forceRegister=true
+        // 定时任务心跳中 forceRegister 的默认值为 true(broker.conf 中如果配置则以配置为准)
         if (forceRegister || needRegister(this.brokerConfig.getBrokerClusterName(),
             this.getBrokerAddr(),
             this.brokerConfig.getBrokerName(),
@@ -964,10 +966,14 @@ public class BrokerController {
         final int timeoutMills) {
 
         TopicConfigSerializeWrapper topicConfigWrapper = this.getTopicConfigManager().buildTopicConfigSerializeWrapper();
+        // 查询所有 NameServer 节点,判断该 broker 是否需要重新注册
+        // API 方法底层调用的是 org.apache.rocketmq.namesrv.processor.DefaultRequestProcessor#queryBrokerTopicConfig
+        // 通过查看 brokerLiveTable 中 DataVersion 和 Broker 的 DataVersion 是否相等来判断是否需要重新注册 broker
         List<Boolean> changeList = brokerOuterAPI.needRegister(clusterName, brokerAddr, brokerName, brokerId, topicConfigWrapper, timeoutMills);
         boolean needRegister = false;
         for (Boolean changed : changeList) {
             if (changed) {
+                // 只要有一个节点数据不一致就需要重新向各个NameServer 节点注册
                 needRegister = true;
                 break;
             }
