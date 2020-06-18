@@ -858,9 +858,9 @@ public class BrokerController {
         }
 
 
-
+        // 向 NameServer 注册 Broker 信息
         this.registerBrokerAll(true, false, true);
-
+        // 每隔 30s 向 NameServer 注册 Broker 信息(即 Broker 发送心跳)
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
 
             @Override
@@ -916,12 +916,13 @@ public class BrokerController {
             }
             topicConfigWrapper.setTopicConfigTable(topicConfigTable);
         }
-
+        // 判断是否需要发送心跳包
         if (forceRegister || needRegister(this.brokerConfig.getBrokerClusterName(),
             this.getBrokerAddr(),
             this.brokerConfig.getBrokerName(),
             this.brokerConfig.getBrokerId(),
             this.brokerConfig.getRegisterBrokerTimeoutMills())) {
+            // 向 NameServer 发送心跳包(底层调用 BrokerOuterAPI#registerBrokerAll 方法,netty 实现细节暂不讨论)
             doRegisterBrokerAll(checkOrderConfig, oneway, topicConfigWrapper);
         }
     }
