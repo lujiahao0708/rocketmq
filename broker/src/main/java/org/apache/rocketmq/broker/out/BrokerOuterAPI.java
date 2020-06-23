@@ -220,6 +220,7 @@ public class BrokerOuterAPI {
     ) {
         List<String> nameServerAddressList = this.remotingClient.getNameServerAddressList();
         if (nameServerAddressList != null) {
+            // 遍历 NameServer 节点移除 broker
             for (String namesrvAddr : nameServerAddressList) {
                 try {
                     this.unregisterBroker(namesrvAddr, clusterName, brokerAddr, brokerName, brokerId);

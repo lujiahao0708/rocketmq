@@ -438,10 +438,12 @@ public class RouteInfoManager {
     }
 
     public void scanNotActiveBroker() {
+        // 遍历 brokerLiveTable
         Iterator<Entry<String, BrokerLiveInfo>> it = this.brokerLiveTable.entrySet().iterator();
         while (it.hasNext()) {
             Entry<String, BrokerLiveInfo> next = it.next();
             long last = next.getValue().getLastUpdateTimestamp();
+            // 心跳包的时间距当时时间是否超过120s
             if ((last + BROKER_CHANNEL_EXPIRED_TIME) < System.currentTimeMillis()) {
                 RemotingUtil.closeChannel(next.getValue().getChannel());
                 it.remove();
@@ -456,6 +458,8 @@ public class RouteInfoManager {
         if (channel != null) {
             try {
                 try {
+                    // scanNotActiveBroker 这里已经将不活跃的 broker 信息从 brokerLiveTable 中删除了
+                    // 这里根据 broker 地址也不会遍历出来,因此 brokerAddrFound 还是 null
                     this.lock.readLock().lockInterruptibly();
                     Iterator<Entry<String, BrokerLiveInfo>> itBrokerLiveTable =
                         this.brokerLiveTable.entrySet().iterator();
@@ -485,10 +489,12 @@ public class RouteInfoManager {
             try {
                 try {
                     this.lock.writeLock().lockInterruptibly();
+                    // 1.从 brokerLiveTable 和 filterServerTable 移除 broker 信息
                     this.brokerLiveTable.remove(brokerAddrFound);
                     this.filterServerTable.remove(brokerAddrFound);
                     String brokerNameFound = null;
                     boolean removeBrokerName = false;
+                    // 2.维护 brokerAddrTable
                     Iterator<Entry<String, BrokerData>> itBrokerAddrTable =
                         this.brokerAddrTable.entrySet().iterator();
                     while (itBrokerAddrTable.hasNext() && (null == brokerNameFound)) {
@@ -507,7 +513,7 @@ public class RouteInfoManager {
                                 break;
                             }
                         }
-
+                        // broker 的地址都为空时需要从 brokerAddrTable 中移除
                         if (brokerData.getBrokerAddrs().isEmpty()) {
                             removeBrokerName = true;
                             itBrokerAddrTable.remove();
@@ -516,6 +522,7 @@ public class RouteInfoManager {
                         }
                     }
 
+                    // 3.维护 clusterAddrTable
                     if (brokerNameFound != null && removeBrokerName) {
                         Iterator<Entry<String, Set<String>>> it = this.clusterAddrTable.entrySet().iterator();
                         while (it.hasNext()) {
@@ -538,6 +545,7 @@ public class RouteInfoManager {
                         }
                     }
 
+                    // 4.维护 topicQueueTable
                     if (removeBrokerName) {
                         Iterator<Entry<String, List<QueueData>>> itTopicQueueTable =
                             this.topicQueueTable.entrySet().iterator();
